@@ -23,6 +23,8 @@
                              (vector %row-index%)))
 
 (define-condition <invalid-slice> (error) ())
+(define-condition <invalid-row-slice> (<invalid-slice>) ())
+(define-condition <invalid-col-slice> (<invalid-slice>) ())
 
 (define-condition <invalid-index> (error) ())
 (define-condition <row-invalid-index> (<invalid-index>) ())
@@ -61,7 +63,7 @@
       (return-from sel (copy-data-frame df)))
     (let* ((rows (rows df))
            (cols (cols df))
-           (row-num (etypecase row-slice
+           (row-num (typecase row-slice
                       ((eql t)
                        (length rows))
                       ((cons (eql t) %row-index%)
@@ -71,12 +73,15 @@
                       ((cons %row-index% %row-index%)
                        (1+ (- (cdr row-slice) (car row-slice))))
                       ((vector %row-index%)
-                       (length row-slice))))
+                       (length row-slice))
+                      (otherwise
+                       (error '<invalid-row-slice>))))
            (col-num (flet ((norm-index (col)
+                             ;; allows invalid
                              (if (integerp col)
                                  col
                                  (position col cols :test #'string=))))
-                      (etypecase col-slice
+                      (typecase col-slice
                         ((eql t)
                          (length cols))
                         ((cons (eql t) %col-index%)
@@ -86,7 +91,9 @@
                         ((cons %col-index% %col-index%)
                          (1+ (- (norm-index (cdr col-slice)) (norm-index (car col-slice)))))
                         ((vector %col-index%)
-                         (length col-slice)))))
+                         (length col-slice))
+                        (otherwise
+                         (error '<invalid-col-slice>)))))
            (new-rows (make-array row-num :adjustable t :fill-pointer t))
            (new-cols (make-array col-num :adjustable t :fill-pointer t)))
       (let ((index 0))
@@ -126,7 +133,7 @@
   (:method ((df <raw-data-frame>) row-slice fun)
     (assert (typep row-slice '%row-slice%) nil '<row-invalid-slice>)
     (let ((rows (rows df)))
-      (etypecase row-slice
+      (typecase row-slice
         ((eql t)
          (loop for index from 0
                for row across rows
@@ -146,7 +153,9 @@
         ((vector %row-index%)
          (loop for index across row-slice
                for row = (elt rows index)
-               do (funcall fun index row)))))))
+               do (funcall fun index row)))
+        (otherwise
+         (error '<invalid-row-slice>))))))
 
 (defgeneric map-data-frame-cols (<data-frame> %row-index% %col-slice% function)
   (:method ((df <raw-data-frame>) row col-slice fun)
@@ -161,7 +170,7 @@
                (if (integerp col)
                    col
                    (position col cols :test #'string=))))
-        (etypecase col-slice
+        (typecase col-slice
           ((eql t)
            (loop for index from 0
                  for name across cols
@@ -191,7 +200,9 @@
                  for index = (norm-index col-index)
                  for name = (elt cols index)
                  for value = (elt row index)
-                 do (funcall fun index name value))))))))
+                 do (funcall fun index name value)))
+          (otherwise
+           (error '<invalid-col-slice>)))))))
 
 (defgeneric add-rows! (<data-frame> &rest rows)
   (:method ((df <raw-data-frame>) &rest rows)
